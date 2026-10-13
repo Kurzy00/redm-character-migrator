@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "redm-character-migrator"
+version = "1.1.0"
+description = "INSERT-only, schema-aware character migration between RedM/RSG MySQL databases"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "mysql-connector-python>=8.4,<10",
+    "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+character-migrator = "character_migrator.cli:main"
+
+[tool.setuptools]
+packages = ["character_migrator"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]

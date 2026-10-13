@@ -1,0 +1,27 @@
+{
+  "migration": {
+    "stop_if_player_exists": true,
+    "migrate_all_outfits": false,
+    "strict_required_columns": true
+  },
+  "skip_columns": {
+    "players": ["id", "last_updated"],
+    "playerskins": ["id"],
+    "murphy_creator": ["id"],
+    "murphy_outfits": ["id"]
+  },
+  "defaults": {
+    "players": {
+      "inventory": null,
+      "slots": 25
+    }
+  },
+  "overrides": {
+    "players": {
+      "money": "{\"cash\":0.0,\"bank\":0.0,\"bloodmoney\":0.0}",
+      "job": "{\"label\":\"Civilian\",\"name\":\"unemployed\",\"type\":\"none\",\"onduty\":false,\"payment\":10,\"isboss\":false,\"grade\":{\"name\":\"Freelancer\",\"level\":0}}",
+      "gang": "{\"label\":\"No Gang Affiliation\",\"name\":\"none\",\"isboss\":false,\"grade\":{\"name\":\"none\",\"level\":0}}",
+      "inventory": "[{\"name\":\"water\",\"amount\":5,\"type\":\"item\",\"slot\":1,\"info\":[]},{\"name\":\"bread\",\"amount\":3,\"type\":\"item\",\"slot\":2,\"info\":[]}]"
+    }
+  }
+}
