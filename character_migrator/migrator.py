@@ -5,6 +5,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from mysql.connector import errors as mysql_errors
+
 from .config import MigrationConfig
 from .rows import MigrationError, resolve_row
 from .schema import ColumnInfo, get_columns, validate_table
@@ -33,9 +35,13 @@ class CharacterMigrator:
         target: MySQLConnection,
         config: MigrationConfig,
         logger: logging.Logger,
+        source_name: str = "source",
+        target_name: str = "target",
     ) -> None:
         self.source = source
         self.target = target
+        self.source_name = source_name
+        self.target_name = target_name
         self.config = config
         self.logger = logger
         self._schemas: dict[tuple[str, str], dict[str, ColumnInfo]] = {}
@@ -65,7 +71,7 @@ class CharacterMigrator:
         columns = list(where) + ([order[0]] if order else [])
         for column in columns:
             if column not in schema:
-                raise MigrationError(f"Source table {table} has no column {column}.")
+                raise MigrationError(f"{self.source_name}.{table} has no column {column}.")
 
         sql = f"SELECT * FROM `{table}` WHERE " + " AND ".join(f"`{c}` = %s" for c in where)
         if order:
@@ -89,7 +95,7 @@ class CharacterMigrator:
     def load_character(self, charid: str) -> CharacterPayload:
         players = self._latest("players", "citizenid", charid, "id")
         if not players:
-            raise MigrationError(f"{charid} not found in source players table.")
+            raise MigrationError(f"{charid} not found in {self.source_name}.players.")
 
         clothes = self._latest("murphy_clothes", "charid", charid, "outfit_id")
         if self.config.migrate_all_outfits:
@@ -148,7 +154,7 @@ class CharacterMigrator:
 
     def _target_has_player(self, charid: str) -> bool:
         if "citizenid" not in self._schema("target", "players"):
-            raise MigrationError("Target players table has no citizenid column.")
+            raise MigrationError(f"{self.target_name}.players has no citizenid column.")
         cur = self.target.cursor()
         try:
             cur.execute("SELECT 1 FROM `players` WHERE `citizenid` = %s LIMIT 1", (charid,))
@@ -161,7 +167,7 @@ class CharacterMigrator:
         charid = prepared.charid
         if self.config.stop_if_player_exists and self._target_has_player(charid):
             raise MigrationError(
-                f"{charid} already exists in target players table. Nothing inserted."
+                f"{charid} already exists in {self.target_name}.players. Nothing inserted."
             )
 
         for item in prepared.tables:
@@ -169,18 +175,35 @@ class CharacterMigrator:
                 for note in row_notes:
                     self.logger.info("%s | %s | %s", charid, item.table, note)
 
-        if dry_run:
-            self.logger.info("%s | DRY RUN | no changes in target", charid)
-            return
-
+        # A dry run executes the real INSERTs and rolls back, so constraint errors
+        # (NOT NULL, UNIQUE, type mismatches) show up before the real run.
+        # Side effect: InnoDB AUTO_INCREMENT counters in the target still advance.
+        mode = "DRY RUN" if dry_run else "INSERT"
+        table = None
         cursor = self.target.cursor()
         try:
             for item in prepared.tables:
+                table = item.table
                 for row in item.rows:
                     _insert(cursor, item.table, row)
-                    self.logger.info("%s | INSERT OK | %s", charid, item.table)
-            self.target.commit()
-            self.logger.info("%s | COMMIT OK", charid)
+                    self.logger.info("%s | %s OK | %s", charid, mode, item.table)
+            if dry_run:
+                self.target.rollback()
+                self.logger.info(
+                    "%s | DRY RUN | rolled back, %s unchanged", charid, self.target_name
+                )
+            else:
+                self.target.commit()
+                self.logger.info("%s | COMMIT OK", charid)
+        except mysql_errors.IntegrityError as exc:
+            self.target.rollback()
+            self.logger.exception("%s | ROLLBACK", charid)
+            if exc.errno == 1062:
+                raise MigrationError(
+                    f"{table}: row collides with an existing one in {self.target_name} "
+                    f"({exc.msg}). All rows of {charid} rolled back."
+                ) from exc
+            raise MigrationError(f"{table}: {exc.msg}. All rows of {charid} rolled back.") from exc
         except Exception:
             self.target.rollback()
             self.logger.exception("%s | ROLLBACK", charid)

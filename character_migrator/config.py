@@ -127,3 +127,15 @@ def _check_embedded_json(where: str, value: Any) -> list[str]:
     except json.JSONDecodeError as exc:
         return [f"{where}: invalid JSON ({exc.msg} at character {exc.pos})"]
     return []
+
+
+def shadowed_defaults(config: MigrationConfig) -> list[str]:
+    """Defaults that can never apply because an override for the same column always wins."""
+    warnings = []
+    for table, rules in sorted(config.tables.items()):
+        shadowed = sorted(set(rules.defaults) & set(rules.overrides))
+        if shadowed:
+            warnings.append(
+                f"defaults.{table}: {', '.join(shadowed)} never used (overridden in overrides)"
+            )
+    return warnings

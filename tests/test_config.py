@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from character_migrator.config import ConfigError, load_config, parse_config
+from character_migrator.config import ConfigError, load_config, parse_config, shadowed_defaults
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "config.example.json"
 
@@ -70,3 +70,15 @@ def test_load_config_reads_file(tmp_path):
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"migration": {"migrate_all_outfits": True}}), encoding="utf-8")
     assert load_config(path).migrate_all_outfits is True
+
+
+def test_defaults_shadowed_by_overrides_are_reported():
+    config = parse_config(
+        {
+            "defaults": {"players": {"job": "a", "slots": 25}},
+            "overrides": {"players": {"job": "b"}},
+        }
+    )
+    assert shadowed_defaults(config) == [
+        "defaults.players: job never used (overridden in overrides)"
+    ]
